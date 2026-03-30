@@ -38,6 +38,11 @@ using namespace llvm;
 static cl::opt<bool> BPFExpandMemcpyInOrder("bpf-expand-memcpy-in-order",
   cl::Hidden, cl::init(false),
   cl::desc("Expand memcpy into load/store pairs in order"));
+static cl::opt<bool> BPFEnableJSet(
+    "bpf-enable-jset", cl::Hidden, cl::init(true),
+    cl::desc("Enable JSET instruction selection and peephole optimizations"));
+
+bool llvm::useBPFJSet() { return BPFEnableJSet; }
 
 static cl::opt<unsigned> BPFMinimumJumpTableEntries(
     "bpf-min-jump-table-entries", cl::init(13), cl::Hidden,
@@ -1111,6 +1116,25 @@ BPFTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     report_fatal_error("unimplemented select CondCode " + Twine(CC));
   }
 
+  // Fold select(SETEQ, AND(a,b), 0, T, F) into JNE+swapped PHI so the
+  // existing AND+JNE→JSET peephole can eliminate the AND when JSET is enabled.
+  bool SwapSelectPHI = false;
+  if (useBPFJSet() && CC == ISD::SETEQ && isSelectRIOp && !is32BitCmp) {
+    int64_t CheckImm = MI.getOperand(2).getImm();
+    if (CheckImm == 0) {
+      Register LHSOrig = MI.getOperand(1).getReg();
+      MachineRegisterInfo &MRI = F->getRegInfo();
+      MachineInstr *DefMI = MRI.hasOneDef(LHSOrig)
+                                  ? &*MRI.def_instr_begin(LHSOrig)
+                                  : nullptr;
+      if (DefMI && DefMI->getParent() == BB &&
+          (DefMI->getOpcode() == BPF::AND_rr ||
+           DefMI->getOpcode() == BPF::AND_ri)) {
+        NewCC = BPF::JNE_ri;
+        SwapSelectPHI = true;
+      }
+    }
+  }
   Register LHS = MI.getOperand(1).getReg();
   bool isSignedCmp = (CC == ISD::SETGT ||
                       CC == ISD::SETGE ||
@@ -1156,9 +1180,9 @@ BPFTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
   // ...
   BB = Copy1MBB;
   BuildMI(*BB, BB->begin(), DL, TII.get(BPF::PHI), MI.getOperand(0).getReg())
-      .addReg(MI.getOperand(5).getReg())
+      .addReg(MI.getOperand(SwapSelectPHI ? 4 : 5).getReg())
       .addMBB(Copy0MBB)
-      .addReg(MI.getOperand(4).getReg())
+      .addReg(MI.getOperand(SwapSelectPHI ? 5 : 4).getReg())
       .addMBB(ThisMBB);
 
   MI.eraseFromParent(); // The pseudo instruction is gone now.

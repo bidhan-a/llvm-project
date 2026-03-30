@@ -60,6 +60,7 @@ def BPFNoBswap : Predicate<"!Subtarget->hasBswap()">;
 def BPFHasStoreImm : Predicate<"Subtarget->hasStoreImm()">;
 def BPFHasLoadAcqStoreRel : Predicate<"Subtarget->hasLoadAcqStoreRel()">;
 def BPFHasGotox : Predicate<"Subtarget->hasGotox()">;
+def BPFHasJSet : Predicate<"llvm::useBPFJSet()">;
 
 class ImmediateAsmOperand<string name> : AsmOperandClass {
   let Name = name;
@@ -868,6 +869,22 @@ let usesCustomInserter = 1, isCodeGenOnly = 1 in {
 // load 64-bit global addr into register
 def : Pat<(BPFWrapper tconstpool:$in), (LD_imm64 tconstpool:$in)>;
 def : Pat<(BPFWrapper tjumptable:$in), (LD_imm64 tjumptable:$in)>;
+
+// Fold bit-test branches into JSET/JSET32 when explicitly enabled.
+let Predicates = [BPFHasJSet] in {
+def : Pat<(BPFbrcc (and (i64 GPR:$dst), (i64 GPR:$src)),
+                  (i64 0), BPF_CC_NE, bb:$BrDst),
+          (JSET_rr GPR:$dst, GPR:$src, bb:$BrDst)>;
+def : Pat<(BPFbrcc (and (i64 GPR:$dst), i64immSExt32:$imm),
+                  (i64 0), BPF_CC_NE, bb:$BrDst),
+          (JSET_ri GPR:$dst, i64immSExt32:$imm, bb:$BrDst)>;
+def : Pat<(BPFbrcc (and (i32 GPR32:$dst), (i32 GPR32:$src)),
+                  (i32 0), BPF_CC_NE_32, bb:$BrDst),
+          (JSET_rr_32 GPR32:$dst, GPR32:$src, bb:$BrDst)>;
+def : Pat<(BPFbrcc (and (i32 GPR32:$dst), i32immSExt32:$imm),
+                  (i32 0), BPF_CC_NE_32, bb:$BrDst),
+          (JSET_ri_32 GPR32:$dst, i32immSExt32:$imm, bb:$BrDst)>;
+}
 
 // 0xffffFFFF doesn't fit into simm32, optimize common case
 def : Pat<(i64 (and (i64 GPR:$src), 0xffffFFFF)),
