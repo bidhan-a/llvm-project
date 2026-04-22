@@ -30,7 +30,8 @@ define i32 @bpf_prog1(ptr nocapture %ctx) #0 section "events/net/netif_receive_s
 ; CHECK-LABEL: bpf_prog1:
 ; CHECK: call 4
 ; CHECK: call 9
-; CHECK: if r0 != 0
+; CHECK: r1 = 4294967295 ll
+; CHECK: if r0 & r1 goto
 ; CHECK: r1 = 622884453
 ; CHECK: *(u32 *)(r10 - 16) = r1
 ; CHECK: r1 = 7214898703899978611 ll

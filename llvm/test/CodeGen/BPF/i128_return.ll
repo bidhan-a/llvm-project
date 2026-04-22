@@ -26,10 +26,10 @@ define i128 @foo(i64 %a, i64 %b) {
 ; CHECK-NEXT:    r0 = r1
 ; CHECK-NEXT:    r0 += r2
 ; CHECK-NEXT:    w3 = 1
-; CHECK-NEXT:    if r0 < r1 goto .LBB1_2
+; CHECK-NEXT:    if r0 < r1 goto LBB1_2
 ; CHECK-NEXT:  # %bb.1: # %entry
 ; CHECK-NEXT:    w3 = 0
-; CHECK-NEXT:  .LBB1_2: # %entry
+; CHECK-NEXT:  LBB1_2: # %entry
 ; CHECK-NEXT:    r2 s>>= 63
 ; CHECK-NEXT:    r1 s>>= 63
 ; CHECK-NEXT:    r1 += r2
